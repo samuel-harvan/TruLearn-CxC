@@ -6,8 +6,9 @@ import os
 
 load_dotenv() 
 
-print("FLASK_APP:", os.getenv("FLASK_APP"))
-print("GENAI_API_KEY:", os.getenv("GEMINI_API_KEY") is not None)
+# for testing
+# print("FLASK_APP:", os.getenv("FLASK_APP"))
+# print("GENAI_API_KEY:", os.getenv("GEMINI_API_KEY") is not None)
 
 # load from key from .env file 
 gemini_api_key = os.getenv("GEMINI_API_KEY")

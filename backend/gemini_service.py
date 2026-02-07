@@ -1,9 +1,17 @@
 import json
 from google import genai
 from google.genai import types
+from dotenv import load_dotenv
+import os
 
-# Client auto-reads GEMINI_API_KEY from environment
-client = genai.Client()
+load_dotenv() 
+
+print("FLASK_APP:", os.getenv("FLASK_APP"))
+print("GENAI_API_KEY:", os.getenv("GEMINI_API_KEY") is not None)
+
+# load from key from .env file 
+gemini_api_key = os.getenv("GEMINI_API_KEY")
+client = genai.Client(api_key=gemini_api_key)
 MODEL = "gemini-2.0-flash-exp"
 
 

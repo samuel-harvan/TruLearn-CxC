@@ -55,12 +55,11 @@ def index():
         }
     })
 
-
+# for testing purposes
 @app.route("/api/health", methods=["GET"])
 def health_check():
-    """Health check endpoint"""
     return jsonify({
-        "status": "healthy",
+        "status": "ok",
         "service": "TruLearn API (Flask)",
         "gemini": "✅"
     })
@@ -281,4 +280,4 @@ if __name__ == "__main__":
     print("   • Memorization detection (mock)")
     print("="*60 + "\n")
     
-    app.run(debug=True, port=5000, host="0.0.0.0")
+    app.run(debug=True, port=5000, host="127.0.0.1")

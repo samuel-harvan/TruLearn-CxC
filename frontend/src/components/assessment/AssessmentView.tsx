@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
-import { 
-  Container, 
-  Paper, 
+import {
+  Container,
+  Paper,
   Button,
-  Typography, 
-  Box, 
+  Typography,
+  Box,
   Alert,
   Divider,
   Stepper,
@@ -15,118 +15,185 @@ import {
   Fade,
   Grow,
   CircularProgress,
-  List,
-  ListItem,
-  ListItemButton,
-  ListItemText
+  LinearProgress,
+  TextField,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
+  Chip
 } from '@mui/material';
 import QuestionDisplay from './QuestionDisplay';
-import AnswerInput from './AnswerInput';
 import PdfUpload from './PdfUpload';
-import { Question } from '../../types/assessment.types';
+import { Question, DetectionResult } from '../../types/assessment.types';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import AutoStoriesIcon from '@mui/icons-material/AutoStories';
-import PsychologyIcon from '@mui/icons-material/Psychology';
 import EmojiObjectsIcon from '@mui/icons-material/EmojiObjects';
+import SendIcon from '@mui/icons-material/Send';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import { generateQuestions, uploadPdfForQuestions } from '../../api/llmApi';
 import { submitAnswer, runDetection } from '../../api/assessmentApi';
+
+interface QuestionResult {
+  question: Question;
+  answer: string;
+  detection: DetectionResult;
+}
 
 const AssessmentView: React.FC = () => {
   const [activeStep, setActiveStep] = useState(0);
   const [uploadedPdf, setUploadedPdf] = useState<File | null>(null);
   const [questions, setQuestions] = useState<Question[]>([]);
-  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [loadingQuestions, setLoadingQuestions] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [detectionResult, setDetectionResult] = useState<{
-    detected: boolean;
-    score: number;
-    message: string;
-  } | null>(null);
+  const [submitProgress, setSubmitProgress] = useState(0);
 
-  const currentQuestion = questions[currentQuestionIndex];
+  // Tracks all answers: question ID → answer text
+  const [answers, setAnswers] = useState<Record<number, string>>({});
+
+  // Results after batch submission
+  const [allResults, setAllResults] = useState<QuestionResult[]>([]);
+
+  const answeredCount = Object.keys(answers).length;
 
   const handlePdfUpload = async (file: File) => {
-    console.log('PDF uploaded:', file.name);
     setUploadedPdf(file);
     setLoadingQuestions(true);
-    
+
     try {
-      // Step 1: Upload PDF and extract text
-      const { text, concept } = await uploadPdfForQuestions(file);
-      console.log('Extracted concept:', concept);
-      
-      // Step 2: Generate questions using LLM
+      const { text, concept, filename } = await uploadPdfForQuestions(file);
+
       const response = await generateQuestions({
         concept: concept,
         difficulty: 'medium',
-        num_variations: 5, // Generate 5 questions
-        reference_text: text
+        num_variations: 5,
+        reference_text: text,
+        filename: filename
       });
-      
+
       setQuestions(response.questions);
-      setCurrentQuestionIndex(0);
-      setActiveStep(1); // Move to question selection step
-      
+      setAnswers({});
+      setActiveStep(1);
     } catch (error) {
       console.error('Error processing PDF:', error);
-      alert('Error processing PDF. Using mock questions for demo.');
+      alert('Error processing PDF. Please try again.');
     } finally {
       setLoadingQuestions(false);
     }
   };
 
-  const handleQuestionSelect = (index: number) => {
-    setCurrentQuestionIndex(index);
-    setActiveStep(2); // Move to answer step
+  const handleAnswerChange = (questionId: number, answerText: string) => {
+    setAnswers(prev => {
+      const updated = { ...prev };
+      if (answerText.trim() === '') {
+        delete updated[questionId];
+      } else {
+        updated[questionId] = answerText;
+      }
+      return updated;
+    });
   };
 
-  const handleSubmitAnswer = async (answerText: string, responseTime: number) => {
-    console.log('Submitting answer:', { answerText, responseTime });
-  
+  const handleSubmitAll = async () => {
+    if (answeredCount === 0) {
+      alert('Please answer at least one question before submitting.');
+      return;
+    }
+
     setIsSubmitting(true);
-    setDetectionResult(null);
+    setSubmitProgress(0);
+
+    const results: QuestionResult[] = [];
+    const answeredQuestions = questions.filter(q => answers[q.id]);
+    let processed = 0;
 
     try {
-      // Prepare answer data once
-      const answerData = {
-        question_id: currentQuestion.id,
-        student_id: 1,
-        answer_text: answerText,
-        response_time_seconds: responseTime,
-        reference_pdf: uploadedPdf?.name
-      };
+      for (const question of answeredQuestions) {
+        const answerText = answers[question.id];
+        const sampleAnswer = question.type === 'open_ended' ? question.sample_answer : undefined;
 
-      // Submit answer
-      const submitResponse = await submitAnswer(answerData);
-      
-      // Run detection with both answerId AND answerData
-      const detection = await runDetection(
-        submitResponse.answer_id,
-        answerData  // ← This is the missing second parameter
-      );
-      
-      setDetectionResult({
-        detected: detection.overfitting_detected,
-        score: detection.confidence_score,
-        message: detection.evidence.reason
-      });
-      
-      setActiveStep(3);
-      
+        const answerData = {
+          question_id: question.id,
+          student_id: 1,
+          answer_text: answerText,
+          response_time_seconds: 0,
+          reference_pdf: uploadedPdf?.name,
+          sample_answer: sampleAnswer,
+          concept: question.concept,
+        };
+
+        const submitResponse = await submitAnswer(answerData);
+        const detection = await runDetection(submitResponse.answer_id, answerData);
+
+        results.push({ question, answer: answerText, detection });
+
+        processed++;
+        setSubmitProgress(Math.round((processed / answeredQuestions.length) * 100));
+      }
+
+      setAllResults(results);
+      setActiveStep(2);
     } catch (error) {
-      console.error('Error submitting answer:', error);
-      alert('Error analyzing answer. Please try again.');
+      console.error('Error submitting answers:', error);
+      alert('Error analyzing answers. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const steps = ['Upload Material', 'Select Question', 'Answer Question', 'View Results'];
+  // Compute summary stats from results
+  const getResultsSummary = () => {
+    if (allResults.length === 0) return null;
+
+    const totalAnswered = allResults.length;
+    const totalQuestions = questions.length;
+
+    const genuineCount = allResults.filter(r => r.detection.detection_type === 'genuine').length;
+    const memorizedCount = allResults.filter(r => r.detection.overfitting_detected).length;
+    const surfaceCount = allResults.filter(r => r.detection.detection_type === 'surface').length;
+
+    const avgSimilarity = allResults.reduce((sum, r) =>
+      sum + (r.detection.confidence_score || 0), 0) / totalAnswered;
+
+    const understandingPct = Math.round((genuineCount / totalAnswered) * 100);
+    const memorizationPct = Math.round((memorizedCount / totalAnswered) * 100);
+
+    let overallMessage: string;
+    let overallType: 'success' | 'warning' | 'error';
+
+    if (memorizationPct > 50) {
+      overallMessage = "You're relying too heavily on memorization. Try explaining concepts in your own words instead of repeating what's in the notes.";
+      overallType = 'error';
+    } else if (genuineCount === totalAnswered) {
+      overallMessage = "Excellent! You demonstrate genuine understanding of the material. Your answers show real comprehension, not just memorization.";
+      overallType = 'success';
+    } else if (surfaceCount > genuineCount) {
+      overallMessage = "Your answers show surface-level understanding. Try to go deeper \u2014 explain the 'why' behind concepts, not just the 'what'.";
+      overallType = 'warning';
+    } else {
+      overallMessage = "Good effort! Most of your answers show understanding, but review the flagged questions to strengthen weak areas.";
+      overallType = 'warning';
+    }
+
+    return {
+      totalAnswered,
+      totalQuestions,
+      genuineCount,
+      memorizedCount,
+      surfaceCount,
+      avgSimilarity,
+      understandingPct,
+      memorizationPct,
+      overallMessage,
+      overallType
+    };
+  };
+
+  const steps = ['Upload Material', 'Answer Questions', 'Results'];
 
   return (
-    <Box sx={{ 
+    <Box sx={{
       minHeight: '100vh',
       background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
       py: 6
@@ -137,10 +204,10 @@ const AssessmentView: React.FC = () => {
           <Box sx={{ textAlign: 'center', mb: 4 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', mb: 2 }}>
               <EmojiObjectsIcon sx={{ fontSize: 48, color: '#ffd700', mr: 1 }} />
-              <Typography 
-                variant="h3" 
-                component="h1" 
-                sx={{ 
+              <Typography
+                variant="h3"
+                component="h1"
+                sx={{
                   fontWeight: 800,
                   color: 'white',
                   textShadow: '2px 2px 4px rgba(0,0,0,0.2)'
@@ -149,9 +216,9 @@ const AssessmentView: React.FC = () => {
                 TruLearn
               </Typography>
             </Box>
-            <Typography 
-              variant="h6" 
-              sx={{ 
+            <Typography
+              variant="h6"
+              sx={{
                 color: 'rgba(255,255,255,0.95)',
                 fontWeight: 300,
                 letterSpacing: '0.5px'
@@ -163,9 +230,9 @@ const AssessmentView: React.FC = () => {
         </Fade>
 
         <Grow in timeout={1000}>
-          <Paper 
-            elevation={8} 
-            sx={{ 
+          <Paper
+            elevation={8}
+            sx={{
               p: 4,
               borderRadius: 4,
               background: 'rgba(255,255,255,0.98)',
@@ -173,13 +240,11 @@ const AssessmentView: React.FC = () => {
             }}
           >
             {/* Stepper */}
-            <Stepper 
-              activeStep={activeStep} 
-              sx={{ 
+            <Stepper
+              activeStep={activeStep}
+              sx={{
                 mb: 4,
-                '& .MuiStepLabel-label': {
-                  fontWeight: 500
-                }
+                '& .MuiStepLabel-label': { fontWeight: 500 }
               }}
             >
               {steps.map((label) => (
@@ -187,12 +252,8 @@ const AssessmentView: React.FC = () => {
                   <StepLabel
                     StepIconProps={{
                       sx: {
-                        '&.Mui-completed': {
-                          color: '#667eea'
-                        },
-                        '&.Mui-active': {
-                          color: '#764ba2'
-                        }
+                        '&.Mui-completed': { color: '#667eea' },
+                        '&.Mui-active': { color: '#764ba2' }
                       }
                     }}
                   >
@@ -204,7 +265,7 @@ const AssessmentView: React.FC = () => {
 
             <Divider sx={{ mb: 4 }} />
 
-            {/* Step 1: PDF Upload */}
+            {/* Step 0: PDF Upload */}
             {activeStep === 0 && (
               <Fade in timeout={600}>
                 <Box>
@@ -217,12 +278,12 @@ const AssessmentView: React.FC = () => {
                       We'll analyze it and generate personalized questions
                     </Typography>
                   </Box>
-                  <PdfUpload 
+                  <PdfUpload
                     onFileUpload={handlePdfUpload}
                     label="Upload Study Material"
                     helperText="Upload your textbook, notes, or study guide (PDF format)"
                   />
-                  
+
                   {loadingQuestions && (
                     <Box sx={{ textAlign: 'center', mt: 4 }}>
                       <CircularProgress size={60} sx={{ color: '#667eea', mb: 2 }} />
@@ -238,221 +299,382 @@ const AssessmentView: React.FC = () => {
               </Fade>
             )}
 
-            {/* Step 2: Question Selection */}
+            {/* Step 1: All Questions */}
             {activeStep === 1 && (
               <Fade in timeout={600}>
                 <Box>
-                  <Box sx={{ textAlign: 'center', mb: 4 }}>
-                    <PsychologyIcon sx={{ fontSize: 64, color: '#764ba2', mb: 2 }} />
-                    <Typography variant="h5" gutterBottom fontWeight={600}>
-                      Choose a Question
-                    </Typography>
-                    <Typography variant="body1" color="text.secondary">
-                      Select any question to test your understanding
-                    </Typography>
-                  </Box>
-
                   <Alert severity="info" sx={{ mb: 3, borderRadius: 2 }}>
                     <Typography variant="subtitle2" fontWeight={600}>
                       {questions.length} questions generated from: {uploadedPdf?.name}
                     </Typography>
+                    <Typography variant="body2">
+                      Answer the questions below, then submit when you're ready. You don't have to answer all of them.
+                    </Typography>
                   </Alert>
 
-                  <List>
-                    {questions.map((question, index) => (
-                      <ListItem key={question.id} disablePadding sx={{ mb: 1 }}>
-                        <ListItemButton
-                          onClick={() => handleQuestionSelect(index)}
+                  {questions.map((question, index) => {
+                    const isAnswered = !!answers[question.id];
+                    const typeLabel = question.type === 'multiple_choice' ? 'Multiple Choice' : 'Open Response';
+                    const typeColor = question.type === 'multiple_choice' ? '#667eea' : '#764ba2';
+
+                    return (
+                      <Accordion
+                        key={question.id}
+                        disableGutters
+                        sx={{
+                          mb: 2,
+                          borderRadius: '12px !important',
+                          border: '2px solid',
+                          borderColor: isAnswered ? '#51cf66' : '#e0e0e0',
+                          '&:before': { display: 'none' },
+                          overflow: 'hidden',
+                          transition: 'border-color 0.3s ease',
+                          boxShadow: 'none'
+                        }}
+                      >
+                        <AccordionSummary
+                          expandIcon={<ExpandMoreIcon />}
                           sx={{
-                            borderRadius: 2,
-                            border: '2px solid',
-                            borderColor: '#e9ecef',
-                            '&:hover': {
-                              borderColor: '#667eea',
-                              bgcolor: '#f8f9ff'
+                            px: 2.5,
+                            '& .MuiAccordionSummary-content': {
+                              alignItems: 'center',
+                              gap: 1.5,
+                              my: 1,
+                              minWidth: 0
                             }
                           }}
                         >
-                          <Box sx={{ 
-                            width: 32, 
-                            height: 32, 
-                            borderRadius: '50%', 
-                            bgcolor: '#667eea', 
-                            color: 'white', 
-                            display: 'flex', 
-                            alignItems: 'center', 
-                            justifyContent: 'center',
-                            fontWeight: 700,
-                            mr: 2
-                          }}>
+                          {/* Question number */}
+                          <Box
+                            sx={{
+                              bgcolor: isAnswered ? '#51cf66' : '#667eea',
+                              color: 'white',
+                              minWidth: 32,
+                              height: 32,
+                              borderRadius: '50%',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              fontWeight: 700,
+                              fontSize: '0.85rem',
+                              flexShrink: 0
+                            }}
+                          >
                             {index + 1}
                           </Box>
-                          <ListItemText
-                            primary={question.question}
-                            primaryTypographyProps={{
-                              fontWeight: 500,
-                              fontSize: '1rem'
+
+                          {/* Type label */}
+                          <Chip
+                            label={typeLabel}
+                            size="small"
+                            sx={{
+                              bgcolor: `${typeColor}12`,
+                              color: typeColor,
+                              fontWeight: 600,
+                              fontSize: '0.7rem',
+                              height: 24,
+                              flexShrink: 0
                             }}
                           />
-                        </ListItemButton>
-                      </ListItem>
+
+                          {/* Question preview */}
+                          <Typography
+                            variant="body2"
+                            sx={{
+                              color: '#495057',
+                              flex: 1,
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                              minWidth: 0
+                            }}
+                          >
+                            {question.question}
+                          </Typography>
+
+                          {/* Answered checkmark */}
+                          {isAnswered && (
+                            <CheckCircleIcon sx={{ color: '#51cf66', fontSize: 22, flexShrink: 0 }} />
+                          )}
+                        </AccordionSummary>
+
+                        <AccordionDetails sx={{ px: 3, pb: 3, pt: 0 }}>
+                          <QuestionDisplay
+                            question={question}
+                            questionNumber={index + 1}
+                            totalQuestions={questions.length}
+                            selectedAnswer={question.type === 'multiple_choice' ? answers[question.id] : undefined}
+                            onSelectAnswer={question.type === 'multiple_choice'
+                              ? (val) => handleAnswerChange(question.id, val)
+                              : undefined
+                            }
+                            isAnswered={isAnswered}
+                          />
+
+                          {/* Inline textarea for open-ended questions */}
+                          {question.type === 'open_ended' && (
+                            <Box sx={{ mt: 1 }}>
+                              <TextField
+                                fullWidth
+                                multiline
+                                rows={4}
+                                placeholder="Write your answer here..."
+                                value={answers[question.id] || ''}
+                                onChange={(e) => handleAnswerChange(question.id, e.target.value)}
+                                variant="outlined"
+                                sx={{
+                                  '& .MuiOutlinedInput-root': {
+                                    borderRadius: 2,
+                                    '& fieldset': {
+                                      borderColor: isAnswered ? '#51cf66' : '#e0e0e0',
+                                      borderWidth: 2
+                                    },
+                                    '&:hover fieldset': {
+                                      borderColor: '#667eea'
+                                    },
+                                    '&.Mui-focused fieldset': {
+                                      borderColor: '#667eea'
+                                    }
+                                  }
+                                }}
+                              />
+                              <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                                {(answers[question.id] || '').length} characters
+                              </Typography>
+                            </Box>
+                          )}
+                        </AccordionDetails>
+                      </Accordion>
+                    );
+                  })}
+
+                  {/* Submit button */}
+                  {!isSubmitting ? (
+                    <Box sx={{ textAlign: 'center', mt: 4, mb: 2 }}>
+                      <Button
+                        variant="contained"
+                        size="large"
+                        endIcon={<SendIcon />}
+                        onClick={handleSubmitAll}
+                        disabled={answeredCount === 0}
+                        sx={{
+                          borderRadius: 3,
+                          px: 5,
+                          py: 2,
+                          fontSize: '1.1rem',
+                          fontWeight: 700,
+                          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                          boxShadow: '0 4px 16px rgba(102, 126, 234, 0.4)',
+                          '&:hover': {
+                            background: 'linear-gradient(135deg, #5568d3 0%, #653a8a 100%)',
+                            transform: 'translateY(-2px)',
+                            boxShadow: '0 6px 20px rgba(102, 126, 234, 0.5)',
+                          },
+                          '&:disabled': {
+                            background: '#e9ecef',
+                            color: '#adb5bd',
+                            boxShadow: 'none'
+                          },
+                          transition: 'all 0.3s ease'
+                        }}
+                      >
+                        Submit Assessment ({answeredCount}/{questions.length} answered)
+                      </Button>
+                    </Box>
+                  ) : (
+                    <Box sx={{ textAlign: 'center', mt: 4, mb: 2 }}>
+                      <Paper
+                        elevation={0}
+                        sx={{
+                          p: 4,
+                          borderRadius: 3,
+                          background: 'linear-gradient(135deg, #f8f9ff 0%, #e8f0ff 100%)',
+                          border: '2px solid #667eea'
+                        }}
+                      >
+                        <CircularProgress size={48} sx={{ color: '#667eea', mb: 2 }} />
+                        <Typography variant="h6" fontWeight={600} sx={{ mb: 1 }}>
+                          Analyzing your answers...
+                        </Typography>
+                        <LinearProgress
+                          variant="determinate"
+                          value={submitProgress}
+                          sx={{
+                            height: 8,
+                            borderRadius: 4,
+                            bgcolor: 'rgba(102, 126, 234, 0.1)',
+                            '& .MuiLinearProgress-bar': {
+                              borderRadius: 4,
+                              background: 'linear-gradient(90deg, #667eea 0%, #764ba2 100%)'
+                            }
+                          }}
+                        />
+                        <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                          {submitProgress}% complete
+                        </Typography>
+                      </Paper>
+                    </Box>
+                  )}
+                </Box>
+              </Fade>
+            )}
+
+            {/* Step 2: Comprehensive Results */}
+            {activeStep === 2 && (() => {
+              const summary = getResultsSummary();
+              if (!summary) return null;
+
+              return (
+                <Fade in timeout={600}>
+                  <Box>
+                    {/* Overall Summary */}
+                    <Card
+                      elevation={0}
+                      sx={{
+                        mb: 4,
+                        background: summary.overallType === 'success'
+                          ? 'linear-gradient(135deg, #f0fff4 0%, #d4f4dd 100%)'
+                          : summary.overallType === 'error'
+                            ? 'linear-gradient(135deg, #fff5f5 0%, #ffe0e0 100%)'
+                            : 'linear-gradient(135deg, #fffbeb 0%, #fff3bf 100%)',
+                        border: '2px solid',
+                        borderColor: summary.overallType === 'success' ? '#51cf66'
+                          : summary.overallType === 'error' ? '#ff6b6b' : '#ffd43b',
+                        borderRadius: 3
+                      }}
+                    >
+                      <CardContent sx={{ p: 4 }}>
+                        <Box sx={{ textAlign: 'center', mb: 3 }}>
+                          {summary.overallType === 'success' ? (
+                            <CheckCircleOutlineIcon sx={{ fontSize: 72, color: '#51cf66', mb: 1 }} />
+                          ) : (
+                            <WarningAmberIcon sx={{ fontSize: 72, color: summary.overallType === 'error' ? '#ff6b6b' : '#ffd43b', mb: 1 }} />
+                          )}
+                          <Typography variant="h4" fontWeight={800} sx={{
+                            color: summary.overallType === 'success' ? '#2b8a3e'
+                              : summary.overallType === 'error' ? '#c92a2a' : '#e67700'
+                          }}>
+                            Assessment Complete
+                          </Typography>
+                        </Box>
+
+                        {/* Stats Grid */}
+                        <Box sx={{ display: 'flex', gap: 2, mb: 3, flexWrap: 'wrap', justifyContent: 'center' }}>
+                          <Paper elevation={0} sx={{ p: 2, borderRadius: 2, textAlign: 'center', minWidth: 140, bgcolor: 'white' }}>
+                            <Typography variant="h4" fontWeight={800} color="#667eea">
+                              {summary.totalAnswered}/{summary.totalQuestions}
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary" fontWeight={500}>
+                              Questions Answered
+                            </Typography>
+                          </Paper>
+                          <Paper elevation={0} sx={{ p: 2, borderRadius: 2, textAlign: 'center', minWidth: 140, bgcolor: 'white' }}>
+                            <Typography variant="h4" fontWeight={800} color="#51cf66">
+                              {summary.understandingPct}%
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary" fontWeight={500}>
+                              Understanding
+                            </Typography>
+                          </Paper>
+                          <Paper elevation={0} sx={{ p: 2, borderRadius: 2, textAlign: 'center', minWidth: 140, bgcolor: 'white' }}>
+                            <Typography variant="h4" fontWeight={800} color={summary.memorizedCount > 0 ? '#ff6b6b' : '#51cf66'}>
+                              {summary.memorizationPct}%
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary" fontWeight={500}>
+                              Memorization
+                            </Typography>
+                          </Paper>
+                        </Box>
+
+                        <Divider sx={{ my: 2 }} />
+
+                        <Typography variant="body1" textAlign="center" sx={{ fontWeight: 500, color: '#495057' }}>
+                          {summary.overallMessage}
+                        </Typography>
+                      </CardContent>
+                    </Card>
+
+                    {/* Per-Question Breakdown */}
+                    <Typography variant="h6" fontWeight={700} sx={{ mb: 2 }}>
+                      Question Breakdown
+                    </Typography>
+
+                    {allResults.map((result, index) => (
+                      <Card
+                        key={result.question.id}
+                        elevation={0}
+                        sx={{
+                          mb: 2,
+                          borderRadius: 2,
+                          border: '1px solid',
+                          borderColor: result.detection.overfitting_detected ? '#ff6b6b'
+                            : result.detection.detection_type === 'genuine' ? '#51cf66' : '#ffd43b'
+                        }}
+                      >
+                        <CardContent sx={{ py: 2, px: 3 }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                            {result.detection.detection_type === 'genuine' ? (
+                              <CheckCircleOutlineIcon sx={{ color: '#51cf66', fontSize: 28, flexShrink: 0 }} />
+                            ) : (
+                              <WarningAmberIcon sx={{
+                                color: result.detection.overfitting_detected ? '#ff6b6b' : '#ffd43b',
+                                fontSize: 28,
+                                flexShrink: 0
+                              }} />
+                            )}
+
+                            <Box sx={{ flex: 1, minWidth: 0 }}>
+                              <Typography variant="body2" fontWeight={600} noWrap>
+                                Q{index + 1}: {result.question.question}
+                              </Typography>
+                              <Typography variant="caption" color="text.secondary">
+                                {result.detection.evidence.reason}
+                              </Typography>
+                            </Box>
+
+                            <Box sx={{ textAlign: 'right', flexShrink: 0 }}>
+                              <Typography variant="caption" fontWeight={600} sx={{
+                                color: result.detection.detection_type === 'genuine' ? '#2b8a3e'
+                                  : result.detection.overfitting_detected ? '#c92a2a' : '#e67700',
+                                textTransform: 'uppercase',
+                                fontSize: '0.7rem'
+                              }}>
+                                {result.detection.detection_type}
+                              </Typography>
+                              <Typography variant="body2" color="text.secondary">
+                                Similarity: {(result.detection.confidence_score * 100).toFixed(0)}%
+                              </Typography>
+                            </Box>
+                          </Box>
+                        </CardContent>
+                      </Card>
                     ))}
-                  </List>
-                </Box>
-              </Fade>
-            )}
 
-            {/* Step 3: Answer Question */}
-            {activeStep === 2 && currentQuestion && (
-              <Fade in timeout={600}>
-                <Box>
-                  <Alert 
-                    severity="info" 
-                    icon={<AutoStoriesIcon />}
-                    sx={{ 
-                      mb: 3,
-                      borderRadius: 2
-                    }}
-                  >
-                    <Typography variant="subtitle2" fontWeight={600}>
-                      Question {currentQuestionIndex + 1} of {questions.length}
-                    </Typography>
-                    <Typography variant="body2">
-                      Reference: {uploadedPdf?.name}
-                    </Typography>
-                  </Alert>
-
-                  <QuestionDisplay 
-                    question={currentQuestion} 
-                    questionNumber={currentQuestionIndex + 1}
-                    totalQuestions={questions.length}
-                  />
-
-                  <AnswerInput 
-                    onSubmit={handleSubmitAnswer}
-                    isSubmitting={isSubmitting}
-                  />
-
-                  <Box sx={{ mt: 2, display: 'flex', gap: 2 }}>
-                    <Button
-                      variant="outlined"
-                      onClick={() => setActiveStep(1)}
-                      sx={{ borderRadius: 2 }}
-                    >
-                      Choose Different Question
-                    </Button>
+                    {/* Actions */}
+                    <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center', mt: 4 }}>
+                      <Button
+                        variant="contained"
+                        onClick={() => {
+                          setActiveStep(0);
+                          setUploadedPdf(null);
+                          setQuestions([]);
+                          setAnswers({});
+                          setAllResults([]);
+                        }}
+                        size="large"
+                        sx={{
+                          borderRadius: 2,
+                          px: 4,
+                          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+                        }}
+                      >
+                        Start New Assessment
+                      </Button>
+                    </Box>
                   </Box>
-                </Box>
-              </Fade>
-            )}
-
-            {/* Step 4: Results */}
-            {activeStep === 3 && detectionResult && (
-              <Fade in timeout={600}>
-                <Box>
-                  <Card
-                    elevation={0}
-                    sx={{ 
-                      mb: 3,
-                      background: detectionResult.detected 
-                        ? 'linear-gradient(135deg, #fff5f5 0%, #ffe0e0 100%)'
-                        : 'linear-gradient(135deg, #f0fff4 0%, #d4f4dd 100%)',
-                      border: '2px solid',
-                      borderColor: detectionResult.detected ? '#ff6b6b' : '#51cf66',
-                      borderRadius: 3
-                    }}
-                  >
-                    <CardContent sx={{ p: 4 }}>
-                      <Box sx={{ textAlign: 'center', mb: 3 }}>
-                        {detectionResult.detected ? (
-                          <WarningAmberIcon sx={{ fontSize: 72, color: '#ff6b6b', mb: 2 }} />
-                        ) : (
-                          <CheckCircleOutlineIcon sx={{ fontSize: 72, color: '#51cf66', mb: 2 }} />
-                        )}
-                      </Box>
-
-                      {detectionResult.detected ? (
-                        <>
-                          <Typography 
-                            variant="h5" 
-                            component="div" 
-                            gutterBottom 
-                            textAlign="center"
-                            fontWeight={700}
-                            color="#c92a2a"
-                          >
-                            Memorization Detected
-                          </Typography>
-                          <Typography 
-                            variant="body1" 
-                            textAlign="center" 
-                            sx={{ mb: 2, fontWeight: 500 }}
-                          >
-                            Confidence: {(detectionResult.score * 100).toFixed(1)}%
-                          </Typography>
-                          <Divider sx={{ my: 2 }} />
-                          <Typography variant="body1" color="text.secondary" textAlign="center">
-                            {detectionResult.message}
-                          </Typography>
-                        </>
-                      ) : (
-                        <>
-                          <Typography 
-                            variant="h5" 
-                            component="div" 
-                            gutterBottom 
-                            textAlign="center"
-                            fontWeight={700}
-                            color="#2b8a3e"
-                          >
-                            Excellent Understanding! 
-                          </Typography>
-                          <Typography 
-                            variant="body1" 
-                            textAlign="center" 
-                            sx={{ mb: 2, fontWeight: 500 }}
-                          >
-                            Authenticity: {((1 - detectionResult.score) * 100).toFixed(1)}%
-                          </Typography>
-                          <Divider sx={{ my: 2 }} />
-                          <Typography variant="body1" color="text.secondary" textAlign="center">
-                            {detectionResult.message}
-                          </Typography>
-                        </>
-                      )}
-                    </CardContent>
-                  </Card>
-
-                  <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center' }}>
-                    <Button 
-                      variant="outlined" 
-                      onClick={() => setActiveStep(1)}
-                      size="large"
-                      sx={{ borderRadius: 2, px: 3 }}
-                    >
-                      Try Another Question
-                    </Button>
-                    <Button 
-                      variant="contained"
-                      onClick={() => {
-                        setActiveStep(0);
-                        setUploadedPdf(null);
-                        setQuestions([]);
-                        setDetectionResult(null);
-                      }}
-                      size="large"
-                      sx={{ 
-                        borderRadius: 2,
-                        px: 3,
-                        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
-                      }}
-                    >
-                      Start New Assessment
-                    </Button>
-                  </Box>
-                </Box>
-              </Fade>
-            )}
+                </Fade>
+              );
+            })()}
           </Paper>
         </Grow>
       </Container>

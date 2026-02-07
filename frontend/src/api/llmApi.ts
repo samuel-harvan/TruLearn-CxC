@@ -6,6 +6,7 @@ export interface GenerateQuestionsRequest {
   difficulty?: string;
   num_variations?: number;
   reference_text?: string; // PDF text content
+  filename?: string; // PDF filename — lets backend look up full stored summary
 }
 
 export interface GenerateQuestionsResponse {

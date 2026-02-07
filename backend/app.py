@@ -143,11 +143,12 @@ def generate_quiz_questions():
         print(f"\n🤖 Generating questions for concept: {concept}")
         start_time = time.time()
         
-        # Get summary from storage if available
-        summary = reference_text
-        if not summary and filename and filename in pdf_storage:
+        # Prefer full stored summary over truncated reference_text
+        if filename and filename in pdf_storage:
             summary = pdf_storage[filename]['summary']
-        elif not summary:
+        elif reference_text:
+            summary = reference_text
+        else:
             summary = f"Generate questions about the concept: {concept}"
         
         # Generate questions with smart distribution
@@ -315,4 +316,4 @@ if __name__ == "__main__":
     print("   • Memorization detection (mock)")
     print("="*60 + "\n")
     
-    app.run(debug=True, port=5000, host="127.0.0.1")
+    app.run(debug=True, port=5000, host="0.0.0.0")

@@ -21,6 +21,8 @@ export interface SubmitAnswerRequest {
   answer_text: string;
   response_time_seconds: number;
   reference_pdf?: string;
+  sample_answer?: string;
+  concept?: string;
 }
 
 export interface SubmitAnswerResponse {

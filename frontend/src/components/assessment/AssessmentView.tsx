@@ -353,9 +353,9 @@ const AssessmentView: React.FC = () => {
         (data.correctCount / data.totalQuestions) * 100
       );
 
-      if (data.correctPercentage >= 80) {
+      if (data.correctPercentage >= 70) {
         data.suggestedDifficulty = 'hard';
-      } else if (data.correctPercentage >= 50) {
+      } else if (data.correctPercentage >= 40) {
         data.suggestedDifficulty = 'medium';
       } else {
         data.suggestedDifficulty = 'easy';

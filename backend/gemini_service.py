@@ -196,6 +196,8 @@ DISTRIBUTION:
 DIFFICULTY LEVEL - {difficulty.upper()}:
 {difficulty_instructions[difficulty]}
 
+CRITICAL: ALL 10 questions MUST be at {difficulty.upper()} difficulty level. Every question must have "difficulty": "{difficulty}". Do not mix difficulty levels.
+
 CRITICAL: All questions must be answerable using ONLY the information provided in the summary below. Do not require external knowledge.
 
 Requirements for Multiple Choice:
@@ -248,7 +250,20 @@ Summary:
         # Validate we got 10 questions
         if len(questions) != 10:
             print(f"⚠️  Warning: Expected 10 questions, got {len(questions)}")
+<<<<<<< HEAD
 
+=======
+        
+        # Enforce the requested difficulty on all questions (LLM may return wrong labels)
+        for q in questions:
+            q['difficulty'] = difficulty
+            q['distribution_info'] = {
+                'total_mc': num_mc,
+                'total_open': num_open,
+                'content_reasoning': content_analysis['reasoning']
+            }
+        
+>>>>>>> 08decae (final details)
         return questions
 
     except json.JSONDecodeError as e:

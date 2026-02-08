@@ -4,7 +4,7 @@
 export const ENABLE_MOCK_MODE = false; // Toggle to enable/disable
 
 export const mockConfig = {
-  apiDelay: 800, // delay sim
+  apiDelay: 1000, // delay sim
 
   debug: true,
 };

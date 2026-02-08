@@ -1,7 +1,7 @@
 import apiClient from './client';
 import { DetectionResult } from '../types/assessment.types';
 import { ENABLE_MOCK_MODE, simulateDelay, logMockCall } from '../config/mockMode';
-import { mockDetectionResult } from './mockData';
+import { mockDetectionResult, scriptedDetectionResults } from './mockData';
 
 export interface CreateAssessmentRequest {
   title: string;
@@ -86,27 +86,22 @@ export const runDetection = async (
   answerId: number,
   answerData: SubmitAnswerRequest
 ): Promise<DetectionResult> => {
-  // Mock mode: return mock detection result
+  // Mock mode: return scripted detection results per question ID
   if (ENABLE_MOCK_MODE) {
     logMockCall(`POST /api/answers/${answerId}/detect`, answerData);
-    await simulateDelay(600);
+    await simulateDelay(300);
 
-    // Return varied mock results for testing different scenarios
-    const mockScore = Math.random();
+    const questionId = answerData.question_id;
+    const scripted = scriptedDetectionResults[questionId];
+    if (scripted) {
+      return { ...scripted, answer_id: answerId };
+    }
+
+    // Fallback for unscripted questions: return genuine
     return {
       ...mockDetectionResult,
       id: Math.floor(Math.random() * 1000),
       answer_id: answerId,
-      overfitting_detected: mockScore > 0.6,
-      confidence_score: mockScore,
-      detection_type: mockScore > 0.8 ? 'memorization' : mockScore > 0.6 ? 'surface' : 'genuine',
-      evidence: {
-        similarity_score: mockScore,
-        response_time: answerData?.response_time_seconds || 45,
-        reason: mockScore > 0.6
-          ? 'High similarity to reference material detected'
-          : 'Good understanding demonstrated'
-      },
     };
   }
 

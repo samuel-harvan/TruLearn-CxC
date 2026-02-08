@@ -2,9 +2,13 @@ import apiClient from './client';
 import { Question } from '../types/assessment.types';
 import { ENABLE_MOCK_MODE, simulateDelay, logMockCall } from '../config/mockMode';
 import {
-  mockPdfUploadResponse,
-  mockGenerateQuestionsResponse,
   mockVariationQuestion,
+  mockState,
+  biologyUploadResponse,
+  calculusUploadResponse,
+  biologyRound1Questions,
+  biologyAdaptiveQuestions,
+  calculusQuestions,
 } from './mockData';
 
 export interface GenerateQuestionsRequest {
@@ -28,11 +32,29 @@ export interface GenerateQuestionsResponse {
 export const generateQuestions = async (
   request: GenerateQuestionsRequest
 ): Promise<GenerateQuestionsResponse> => {
-  // Mock mode: return mock data without API call
+  // Mock mode: return round-aware question sets
   if (ENABLE_MOCK_MODE) {
     logMockCall('POST /api/questions/generate', request);
     await simulateDelay();
-    return mockGenerateQuestionsResponse;
+    mockState.generateCallCount++;
+
+    // Round 1: Biology initial (medium difficulty)
+    // Round 2: Biology adaptive (after clicking Adaptive Practice)
+    // Round 3+: Calculus (after new assessment upload)
+    let questions: Question[];
+    if (mockState.generateCallCount === 1) {
+      questions = biologyRound1Questions;
+    } else if (mockState.generateCallCount === 2) {
+      questions = biologyAdaptiveQuestions;
+    } else {
+      questions = calculusQuestions;
+    }
+
+    return {
+      questions,
+      generation_time: 1.85,
+      model_used: 'gemini-2.5-flash (mock)'
+    };
   }
 
   // Real API call
@@ -49,11 +71,17 @@ export const generateQuestions = async (
 export const uploadPdfForQuestions = async (
   file: File
 ): Promise<{ text: string; concept: string; filename: string }> => {
-  // Mock mode: return mock data without API call
+  // Mock mode: return subject-aware upload responses
   if (ENABLE_MOCK_MODE) {
     logMockCall('POST /api/upload-reference', { filename: file.name });
-    await simulateDelay(1200); // Longer delay for file upload
-    return mockPdfUploadResponse;
+    await simulateDelay(500);
+    mockState.uploadCount++;
+
+    // First upload: biology notes, subsequent uploads: calculus notes
+    if (mockState.uploadCount === 1) {
+      return biologyUploadResponse;
+    }
+    return calculusUploadResponse;
   }
 
   // Real API call

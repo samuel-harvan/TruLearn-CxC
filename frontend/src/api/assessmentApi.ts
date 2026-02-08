@@ -1,5 +1,7 @@
 import apiClient from './client';
-import { Answer, DetectionResult } from '../types/assessment.types';
+import { DetectionResult } from '../types/assessment.types';
+import { ENABLE_MOCK_MODE, simulateDelay, logMockCall } from '../config/mockMode';
+import { mockDetectionResult } from './mockData';
 
 export interface CreateAssessmentRequest {
   title: string;
@@ -55,6 +57,17 @@ export const createAssessment = async (
 export const submitAnswer = async (
   request: SubmitAnswerRequest
 ): Promise<SubmitAnswerResponse> => {
+  // Mock mode: return mock response
+  if (ENABLE_MOCK_MODE) {
+    logMockCall('POST /api/answers', request);
+    await simulateDelay(300);
+    return {
+      answer_id: Math.floor(Math.random() * 1000),
+      status: 'submitted',
+    };
+  }
+
+  // Real API call
   try {
     const response = await apiClient.post<SubmitAnswerResponse>(
       '/api/answers',
@@ -63,22 +76,41 @@ export const submitAnswer = async (
     return response.data;
   } catch (error) {
     console.error('Error submitting answer:', error);
-    
-    // Mock response for testing
-    console.warn('Using mock answer submission - backend not connected');
-    return {
-      answer_id: Math.floor(Math.random() * 1000),
-      status: 'submitted',
-    };
+    throw error;
   }
 };
 
 
-//Run detection on submitted answer (Update: connected to flask backend) 
+//Run detection on submitted answer (Update: connected to flask backend)
 export const runDetection = async (
   answerId: number,
-  answerData: SubmitAnswerRequest  
+  answerData: SubmitAnswerRequest
 ): Promise<DetectionResult> => {
+  // Mock mode: return mock detection result
+  if (ENABLE_MOCK_MODE) {
+    logMockCall(`POST /api/answers/${answerId}/detect`, answerData);
+    await simulateDelay(600);
+
+    // Return varied mock results for testing different scenarios
+    const mockScore = Math.random();
+    return {
+      ...mockDetectionResult,
+      id: Math.floor(Math.random() * 1000),
+      answer_id: answerId,
+      overfitting_detected: mockScore > 0.6,
+      confidence_score: mockScore,
+      detection_type: mockScore > 0.8 ? 'memorization' : mockScore > 0.6 ? 'surface' : 'genuine',
+      evidence: {
+        similarity_score: mockScore,
+        response_time: answerData?.response_time_seconds || 45,
+        reason: mockScore > 0.6
+          ? 'High similarity to reference material detected'
+          : 'Good understanding demonstrated'
+      },
+    };
+  }
+
+  // Real API call
   try {
     const response = await apiClient.post<DetectionResult>(
       `/api/answers/${answerId}/detect`,
@@ -87,25 +119,7 @@ export const runDetection = async (
     return response.data;
   } catch (error) {
     console.error('Error running detection:', error);
-    
-    // Mock detection result for testing
-    console.warn('Using mock detection - backend not connected');
-    const mockScore = Math.random();
-    return {
-      id: Math.floor(Math.random() * 1000),
-      answer_id: answerId,
-      overfitting_detected: mockScore > 0.6,
-      confidence_score: mockScore,
-      detection_type: mockScore > 0.8 ? 'memorization' : mockScore > 0.6 ? 'surface' : 'behavioral',
-      evidence: {
-        similarity_score: mockScore,
-        response_time: answerData?.response_time_seconds || 45,  // ← Use real time
-        reason: mockScore > 0.6
-          ? 'High similarity to reference material detected'
-          : 'Answer demonstrates genuine understanding'
-      },
-      detected_at: new Date().toISOString()
-    };
+    throw error;
   }
 };
 

@@ -1,5 +1,11 @@
 import apiClient from './client';
 import { Question } from '../types/assessment.types';
+import { ENABLE_MOCK_MODE, simulateDelay, logMockCall } from '../config/mockMode';
+import {
+  mockPdfUploadResponse,
+  mockGenerateQuestionsResponse,
+  mockVariationQuestion,
+} from './mockData';
 
 export interface GenerateQuestionsRequest {
   concept: string;
@@ -22,6 +28,14 @@ export interface GenerateQuestionsResponse {
 export const generateQuestions = async (
   request: GenerateQuestionsRequest
 ): Promise<GenerateQuestionsResponse> => {
+  // Mock mode: return mock data without API call
+  if (ENABLE_MOCK_MODE) {
+    logMockCall('POST /api/questions/generate', request);
+    await simulateDelay();
+    return mockGenerateQuestionsResponse;
+  }
+
+  // Real API call
   const response = await apiClient.post<GenerateQuestionsResponse>(
     '/api/questions/generate',
     request
@@ -35,6 +49,14 @@ export const generateQuestions = async (
 export const uploadPdfForQuestions = async (
   file: File
 ): Promise<{ text: string; concept: string; filename: string }> => {
+  // Mock mode: return mock data without API call
+  if (ENABLE_MOCK_MODE) {
+    logMockCall('POST /api/upload-reference', { filename: file.name });
+    await simulateDelay(1200); // Longer delay for file upload
+    return mockPdfUploadResponse;
+  }
+
+  // Real API call
   const formData = new FormData();
   formData.append('pdf', file);  // Flask expects 'pdf' field name
 
@@ -48,5 +70,32 @@ export const uploadPdfForQuestions = async (
     }
   );
 
+  return response.data;
+};
+
+/**
+ * Generate a variation of a question for practice mode
+ */
+export const generateVariationQuestion = async (
+  originalQuestion: Question,
+  previousAnswer: string,
+  concept: string
+): Promise<{ question: Question; is_variation: boolean }> => {
+  // Mock mode: return mock variation
+  if (ENABLE_MOCK_MODE) {
+    logMockCall('POST /api/questions/variation', { originalQuestion, previousAnswer, concept });
+    await simulateDelay();
+    return { question: mockVariationQuestion, is_variation: true };
+  }
+
+  // Real API call
+  const response = await apiClient.post<{ question: Question; is_variation: boolean }>(
+    '/api/questions/variation',
+    {
+      original_question: originalQuestion,
+      previous_answer: previousAnswer,
+      concept,
+    }
+  );
   return response.data;
 };

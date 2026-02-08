@@ -258,6 +258,8 @@ def run_detection(answer_id):
 
     answer_text = data.get("answer_text", "")
     sample_answer = data.get("sample_answer", "")
+    correct_answer = data.get("correct_answer", "")
+    question_type = data.get("question_type", "")
     concept = data.get("concept", "")
 
     # Get stored summary for similarity comparison
@@ -272,12 +274,18 @@ def run_detection(answer_id):
         # Run similarity check (student answer vs source material)
         similarity = check_similarity(answer_text, summary) if summary else {"score": 0.0, "is_memorized": False}
 
-        # Run correctness check (student answer vs sample answer)
-        correctness = check_correctness(answer_text, sample_answer) if sample_answer else {"label": "neutral", "scores": {}}
-
+        # Run correctness check
+        if question_type == "multiple_choice" and correct_answer:
+            # MCQ: simple letter comparison
+            is_correct = answer_text.strip().upper() == correct_answer.strip().upper()
+            correctness = {"label": "entailment" if is_correct else "contradiction", "scores": {}}
+        else:
+            # Open-ended: use NLI model
+            correctness = check_correctness(answer_text, sample_answer) if sample_answer else {"label": "neutral", "scores": {}}
+ 
         similarity_score = similarity["score"]
         correctness_label = correctness["label"]
-
+ 
         # Score interpretation:
         # High similarity + correct = memorization (overfitting)
         # Low similarity + correct = genuine understanding
@@ -285,12 +293,12 @@ def run_detection(answer_id):
         if similarity["is_memorized"]:
             detection_type = "memorization"
             needs_practice = True
-        elif correctness_label == "contradiction":
-            detection_type = "surface"
-            needs_practice = True
-        else:
+        elif correctness_label == "entailment":
             detection_type = "genuine"
             needs_practice = False
+        else:
+            detection_type = "surface"
+            needs_practice = True
 
         return jsonify({
             "id": int(time.time() * 1000),
@@ -306,8 +314,8 @@ def run_detection(answer_id):
                 "response_time": data.get("response_time_seconds", 45),
                 "reason": (
                     "High similarity to reference material - likely memorized" if similarity["is_memorized"]
-                    else "Answer contradicts expected response" if correctness_label == "contradiction"
-                    else "Good understanding demonstrated"
+                    else "Good understanding demonstrated" if correctness_label == "entailment"
+                    else "Answer does not match expected response"
                 )
             },
             "detected_at": time.strftime('%Y-%m-%dT%H:%M:%SZ')

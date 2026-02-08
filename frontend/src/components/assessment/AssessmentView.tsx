@@ -54,6 +54,7 @@ const AssessmentView: React.FC = () => {
 
   // Results after batch submission
   const [allResults, setAllResults] = useState<QuestionResult[]>([]);
+  //will try to use expandedQuestionId for UI changes later (i.e disabling other accordions while one is open and highlighting open accordions, etc.)
   const [expandedQuestionId, setExpandedQuestionId] = useState<number | null>(null);
   
   const accordionRefs = useRef<Record<number, HTMLDivElement | null>>({});
@@ -98,23 +99,21 @@ const AssessmentView: React.FC = () => {
     });
   };
 
-  const handleAccordionChange = (questionId: number, isExpanding: boolean) => {
+  const handleAccordionChange = (expandedQuestionId: number, isExpanding: boolean) => {
     if (isExpanding) {
-      setExpandedQuestionId(questionId);
+      setExpandedQuestionId(expandedQuestionId);
       // Wait for the accordion to expand, then center the element (including details) in the viewport
       setTimeout(() => {
-        const el = accordionRefs.current[questionId];
+        const el = accordionRefs.current[expandedQuestionId];
         if (!el) return;
 
-        // might change these
-        const centerRatio = 0.3; 
-        const headerOffset = 0; 
-
+        // Center the expanded question box in the middle of the screen
         const rect = el.getBoundingClientRect();
         const elementCenterY = rect.top + rect.height / 2 + window.scrollY;
-        const targetScrollTop = Math.max(0, Math.round(elementCenterY - window.innerHeight * centerRatio - headerOffset));
+        const viewportCenterY = window.innerHeight / 2;
+        const targetScrollTop = Math.max(0, Math.round(elementCenterY - viewportCenterY));
         window.scrollTo({ top: targetScrollTop, behavior: 'smooth' });
-      }, 150);
+      }, 300);
     } else {
       setExpandedQuestionId(null);
     }
@@ -349,6 +348,7 @@ const AssessmentView: React.FC = () => {
                           if (el) accordionRefs.current[question.id] = el;
                         }}
                         disableGutters
+                        expanded={expandedQuestionId === question.id}
                         onChange={(_, isExpanded) => handleAccordionChange(question.id, isExpanded)}
                         sx={{
                           mb: 2,

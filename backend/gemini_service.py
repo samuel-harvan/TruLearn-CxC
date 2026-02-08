@@ -250,20 +250,6 @@ Summary:
         # Validate we got 10 questions
         if len(questions) != 10:
             print(f"⚠️  Warning: Expected 10 questions, got {len(questions)}")
-<<<<<<< HEAD
-
-=======
-        
-        # Enforce the requested difficulty on all questions (LLM may return wrong labels)
-        for q in questions:
-            q['difficulty'] = difficulty
-            q['distribution_info'] = {
-                'total_mc': num_mc,
-                'total_open': num_open,
-                'content_reasoning': content_analysis['reasoning']
-            }
-        
->>>>>>> 08decae (final details)
         return questions
 
     except json.JSONDecodeError as e:

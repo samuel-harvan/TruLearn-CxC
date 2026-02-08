@@ -102,21 +102,20 @@ const AssessmentView: React.FC = () => {
     });
   };
 
-  const handleAccordionChange = (expandedQuestionId: number, isExpanding: boolean) => {
+  const handleAccordionChange = (questionId: number, isExpanding: boolean) => {
     if (isExpanding) {
-      setExpandedQuestionId(expandedQuestionId);
-      // Wait for the accordion to expand, then center the element (including details) in the viewport
+      setExpandedQuestionId(questionId);
+      // Wait for both the collapsing and expanding animations to settle before centering
       setTimeout(() => {
-        const el = accordionRefs.current[expandedQuestionId];
+        const el = accordionRefs.current[questionId];
         if (!el) return;
 
-        // Center the expanded question box in the middle of the screen
         const rect = el.getBoundingClientRect();
         const elementCenterY = rect.top + rect.height / 2 + window.scrollY;
         const viewportCenterY = window.innerHeight / 2;
         const targetScrollTop = Math.max(0, Math.round(elementCenterY - viewportCenterY));
         window.scrollTo({ top: targetScrollTop, behavior: 'smooth' });
-      }, 200); // delay for accordion anim (subject to change)
+      }, 275);
     } else {
       setExpandedQuestionId(null);
     }
@@ -626,7 +625,7 @@ const AssessmentView: React.FC = () => {
                                 }}
                               />
                               <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
-                                {(answers[question.id] || '').length} characters
+                                {(answers[question.id] || '').trim().split(/\s+/).filter(Boolean).length} words
                               </Typography>
                             </Box>
                           )}
@@ -836,10 +835,15 @@ const AssessmentView: React.FC = () => {
                                   Q{index + 1}: {result.question.question}
                                 </Typography>
                                 <Typography variant="caption" color="text.secondary">
-                                  {isMC
-                                    ? (result.isCorrect
-                                        ? `Correct! You selected ${result.answer}`
-                                        : `Incorrect. You selected ${result.answer}, correct answer is ${result.question.type === 'multiple_choice' ? result.question.correct_answer : ''}`)
+                                  {isMC && result.question.type === 'multiple_choice'
+                                    ? (() => {
+                                        const q = result.question;
+                                        const selectedText = q.options[result.answer as keyof typeof q.options] || result.answer;
+                                        const correctText = q.options[q.correct_answer];
+                                        return result.isCorrect
+                                          ? `Correct! You selected: ${selectedText}`
+                                          : `Incorrect. You selected: ${selectedText}. Correct answer: ${correctText}`;
+                                      })()
                                     : result.detection?.evidence.reason || 'No analysis available'
                                   }
                                 </Typography>
@@ -877,51 +881,62 @@ const AssessmentView: React.FC = () => {
                     })}
 
                     {/* Actions */}
-                    <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center', mt: 4 }}>
-                      <Button
-                        variant="contained"
-                        onClick={handleAdaptivePractice}
-                        size="large"
-                        startIcon={<EmojiObjectsIcon />}
-                        sx={{
-                          borderRadius: 2,
-                          px: 4,
-                          background: 'linear-gradient(135deg, #ffd43b 0%, #fab005 100%)',
-                          color: '#1a1a1a',
-                          fontWeight: 600,
-                          '&:hover': {
-                            background: 'linear-gradient(135deg, #fab005 0%, #f59f00 100%)',
-                          }
-                        }}
-                      >
-                        Adaptive Practice
-                      </Button>
+                    {loadingQuestions ? (
+                      <Box sx={{ textAlign: 'center', mt: 4 }}>
+                        <CircularProgress size={48} sx={{ color: '#fab005', mb: 2 }} />
+                        <Typography variant="body1" fontWeight={600}>
+                          Generating adaptive questions...
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          Adjusting difficulty based on your performance
+                        </Typography>
+                      </Box>
+                    ) : (
+                      <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center', mt: 4 }}>
+                        <Button
+                          variant="contained"
+                          onClick={handleAdaptivePractice}
+                          size="large"
+                          startIcon={<EmojiObjectsIcon />}
+                          sx={{
+                            borderRadius: 2,
+                            px: 4,
+                            background: 'linear-gradient(135deg, #ffd43b 0%, #fab005 100%)',
+                            color: '#1a1a1a',
+                            fontWeight: 600,
+                            '&:hover': {
+                              background: 'linear-gradient(135deg, #fab005 0%, #f59f00 100%)',
+                            }
+                          }}
+                        >
+                          Adaptive Practice
+                        </Button>
 
-                      <Button
-                        variant="outlined"
-                        onClick={() => {
-                          setActiveStep(0);
-                          setUploadedPdf(null);
-                          setQuestions([]);
-                          setAnswers({});
-                          setAllResults([]);
-                          setExpandedQuestionId(null); // Close any open accordion
-                          // Scroll to top
-                          setTimeout(() => {
-                            window.scrollTo({ top: 0, behavior: 'smooth' });
-                          }, 100);
-                        }}
-                        size="large"
-                        sx={{
-                          borderRadius: 2,
-                          px: 4,
-                          borderColor: '#AEE0F9',
-                          color: '#1a1a1a'
-                        }}
-                      >
-                        Start New Assessment
-                      </Button>
-                    </Box>
+                        <Button
+                          variant="outlined"
+                          onClick={() => {
+                            setActiveStep(0);
+                            setUploadedPdf(null);
+                            setQuestions([]);
+                            setAnswers({});
+                            setAllResults([]);
+                            setExpandedQuestionId(null);
+                            setTimeout(() => {
+                              window.scrollTo({ top: 0, behavior: 'smooth' });
+                            }, 100);
+                          }}
+                          size="large"
+                          sx={{
+                            borderRadius: 2,
+                            px: 4,
+                            borderColor: '#AEE0F9',
+                            color: '#1a1a1a'
+                          }}
+                        >
+                          Start New Assessment
+                        </Button>
+                      </Box>
+                    )}
                   </Box>
                 </Fade>
               );

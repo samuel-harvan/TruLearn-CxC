@@ -115,7 +115,7 @@ const AssessmentView: React.FC = () => {
         const viewportCenterY = window.innerHeight / 2;
         const targetScrollTop = Math.max(0, Math.round(elementCenterY - viewportCenterY));
         window.scrollTo({ top: targetScrollTop, behavior: 'smooth' });
-      }, 300);
+      }, 200); // delay for accordion anim (subject to change)
     } else {
       setExpandedQuestionId(null);
     }

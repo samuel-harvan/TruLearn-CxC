@@ -139,7 +139,6 @@ const AssessmentView: React.FC = () => {
       for (const question of answeredQuestions) {
         const answerText = answers[question.id];
 
-<<<<<<< HEAD
         // Multiple choice: only check if answer is correct
         if (question.type === 'multiple_choice') {
           const isCorrect = answerText === question.correct_answer;
@@ -157,19 +156,6 @@ const AssessmentView: React.FC = () => {
             sample_answer: sampleAnswer,
             concept: question.concept,
           };
-=======
-        const answerData = {
-          question_id: question.id,
-          student_id: 1,
-          answer_text: answerText,
-          response_time_seconds: 0,
-          reference_pdf: uploadedPdf?.name,
-          sample_answer: sampleAnswer,
-          correct_answer: question.type === 'multiple_choice' ? question.correct_answer : undefined,
-          question_type: question.type,
-          concept: question.concept,
-        };
->>>>>>> 624415dadf58f70e6ba14c5cc9eb3be259855ea2
 
           const submitResponse = await submitAnswer(answerData);
           const detection = await runDetection(submitResponse.answer_id, answerData);
@@ -257,7 +243,6 @@ const AssessmentView: React.FC = () => {
     const memorizedCount = openEndedResults.filter(r => r.detection!.overfitting_detected).length;
     const surfaceCount = openEndedResults.filter(r => r.detection!.detection_type === 'surface').length;
 
-<<<<<<< HEAD
     const avgSimilarity = openEndedResults.length > 0
       ? openEndedResults.reduce((sum, r) => sum + (r.detection!.confidence_score || 0), 0) / openEndedResults.length
       : 0;
@@ -272,10 +257,6 @@ const AssessmentView: React.FC = () => {
     const mcAccuracyPct = mcResults.length > 0
       ? Math.round((mcCorrect / mcResults.length) * 100)
       : 0;
-=======
-    const understandingPct = Math.round((genuineCount / totalAnswered) * 100);
-    const memorizationPct = Math.round(avgSimilarity * 100);
->>>>>>> 624415dadf58f70e6ba14c5cc9eb3be259855ea2
 
     let overallMessage: string;
     let overallType: 'success' | 'warning' | 'error';

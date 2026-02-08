@@ -146,6 +146,8 @@ const AssessmentView: React.FC = () => {
           response_time_seconds: 0,
           reference_pdf: uploadedPdf?.name,
           sample_answer: sampleAnswer,
+          correct_answer: question.type === 'multiple_choice' ? question.correct_answer : undefined,
+          question_type: question.type,
           concept: question.concept,
         };
 
@@ -226,7 +228,7 @@ const AssessmentView: React.FC = () => {
       sum + (r.detection.confidence_score || 0), 0) / totalAnswered;
 
     const understandingPct = Math.round((genuineCount / totalAnswered) * 100);
-    const memorizationPct = Math.round((memorizedCount / totalAnswered) * 100);
+    const memorizationPct = Math.round(avgSimilarity * 100);
 
     let overallMessage: string;
     let overallType: 'success' | 'warning' | 'error';

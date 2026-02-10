@@ -7,7 +7,7 @@ import os
 
 MODEL = "gemini-2.5-flash"
 
-# Lazy-initialized client that reloads .env on key changes
+# reloads .env on key changes
 _client = None
 _current_key = None
 
@@ -16,7 +16,7 @@ def get_client() -> genai.Client:
     """Get the Gemini client, reinitializing if the API key has changed."""
     global _client, _current_key
 
-    # Ensure event loop exists in current thread (Flask debug mode runs in threads without one)
+    # Ensure event loop exists in current thread
     try:
         asyncio.get_event_loop()
     except RuntimeError:

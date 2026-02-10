@@ -38,7 +38,7 @@ app.config["MAX_CONTENT_LENGTH"] = 20 * 1024 * 1024  # 20 MB
 
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-# In-memory storage (use database in production)
+#in memory storage (database might be added later) 
 pdf_storage = {}
 question_storage = {}
 
@@ -96,7 +96,7 @@ def upload_pdf():
         print(f"\n📄 Processing PDF: {filename}")
         print(f"📍 File saved to: {filepath}")
 
-        # Summarize PDF and extract concept in a single Gemini call
+        # Summarize PDF and extract concept with Gemini call
         print("🔄 Calling summarize_pdf...")
         result = summarize_pdf(filepath)
         summary = result["summary"]

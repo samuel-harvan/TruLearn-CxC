@@ -10,7 +10,7 @@ from gemini_service import (
     generate_questions,
     generate_variation_question
 )
-from ml_service import check_similarity, check_correctness
+from ml_service import evaluate_depth
 
 app = Flask(__name__)
 app.secret_key = os.urandom(24)
@@ -250,8 +250,11 @@ def submit_answer():
 @app.route("/api/answers/<int:answer_id>/detect", methods=["POST"])
 def run_detection(answer_id):
     """
-    Run memorization detection using ML models.
-    Uses similarity (all-MiniLM-L6-v2) and correctness (nli-deberta-v3-base).
+    Evaluate the depth of understanding in a student's open-ended answer.
+    Uses a fine-tuned NLI cross-encoder (nli-deberta-v3-base) where:
+      - entailment   → deep understanding (explains why, makes connections)
+      - neutral      → shallow/memorized (recites a definition, no elaboration)
+      - contradiction → factually incorrect
     """
     data = request.get_json()
 
@@ -262,63 +265,61 @@ def run_detection(answer_id):
     sample_answer = data.get("sample_answer", "")
     correct_answer = data.get("correct_answer", "")
     question_type = data.get("question_type", "")
-    concept = data.get("concept", "")
-
-    # Get stored summary for similarity comparison
-    summary = ""
-    if concept and concept in question_storage:
-        summary = question_storage[concept].get("summary", "")
 
     if not answer_text:
         return jsonify({"error": "answer_text is required"}), 400
 
     try:
-        # Run similarity check (student answer vs source material)
-        similarity = check_similarity(answer_text, summary) if summary else {"score": 0.0, "is_memorized": False}
-
-        # Run correctness check
         if question_type == "multiple_choice" and correct_answer:
-            # MCQ: simple letter comparison
+            # MCQ: simple letter comparison, no depth evaluation needed
             is_correct = answer_text.strip().upper() == correct_answer.strip().upper()
-            correctness = {"label": "entailment" if is_correct else "contradiction", "scores": {}}
+            depth_result = {
+                "label": "entailment" if is_correct else "contradiction",
+                "depth_score": 1.0 if is_correct else 0.0,
+                "scores": {},
+            }
         else:
-            # Open-ended: use NLI model
-            correctness = check_correctness(answer_text, sample_answer) if sample_answer else {"label": "neutral", "scores": {}}
- 
-        similarity_score = similarity["score"]
-        correctness_label = correctness["label"]
- 
-        # Score interpretation:
-        # High similarity + correct = memorization (overfitting)
-        # Low similarity + correct = genuine understanding
-        # Low similarity + incorrect = needs more practice
-        if similarity["is_memorized"]:
-            detection_type = "memorization"
-            needs_practice = True
-        elif correctness_label == "entailment":
-            detection_type = "genuine"
+            # Open-ended: evaluate depth of understanding with NLI model
+            depth_result = evaluate_depth(answer_text, sample_answer) if sample_answer else {
+                "label": "neutral",
+                "depth_score": 0.0,
+                "scores": {},
+            }
+
+        nli_label = depth_result["label"]
+        depth_score = depth_result["depth_score"]
+
+        # Map NLI label → detection type
+        # entailment   = deep understanding (student explains reasoning, not just a definition)
+        # neutral      = shallow (correct but memorized recitation with no depth)
+        # contradiction = factually wrong
+        if nli_label == "entailment":
+            detection_type = "deep"
             needs_practice = False
-        else:
-            detection_type = "surface"
+        elif nli_label == "contradiction":
+            detection_type = "incorrect"
             needs_practice = True
+        else:
+            detection_type = "shallow"
+            needs_practice = True
+
+        reason_map = {
+            "deep": "Strong understanding — answer demonstrates reasoning and depth beyond a surface definition.",
+            "shallow": "Surface-level answer — correct but reads like a memorized definition. Try explaining the 'why' behind the concept.",
+            "incorrect": "Answer contains factual errors or contradicts the expected response.",
+        }
 
         return jsonify({
             "id": int(time.time() * 1000),
             "answer_id": answer_id,
-            "overfitting_detected": similarity["is_memorized"],
-            "confidence_score": similarity_score,
             "detection_type": detection_type,
             "needs_more_practice": needs_practice,
-            "similarity": similarity,
-            "correctness": correctness,
+            "depth_score": depth_score,
+            "depth_evaluation": depth_result,
             "evidence": {
-                "similarity_score": similarity_score,
+                "depth_score": depth_score,
                 "response_time": data.get("response_time_seconds", 45),
-                "reason": (
-                    "High similarity to reference material - likely memorized" if similarity["is_memorized"]
-                    else "Good understanding demonstrated" if correctness_label == "entailment"
-                    else "Answer does not match expected response"
-                )
+                "reason": reason_map.get(detection_type, "Unable to classify response"),
             },
             "detected_at": time.strftime('%Y-%m-%dT%H:%M:%SZ')
         })

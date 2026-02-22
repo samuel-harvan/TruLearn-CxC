@@ -11,7 +11,7 @@ def _get_nli_model():
     global _nli_model
     if _nli_model is None:
         print("Loading depth evaluation model...")
-        _nli_model = CrossEncoder("cross-encoder/nli-deberta-v3-base")
+        _nli_model = CrossEncoder("samuel-harvan/trulearn-nli")
     return _nli_model
 
 
@@ -36,7 +36,7 @@ def evaluate_depth(student_answer: str, sample_answer: str) -> dict:
         (student_answer, sample_answer),  # forward: student → sample
         (sample_answer, student_answer),  # backward: sample → student
     ]
-    all_scores = model.predict(pairs)
+    all_scores = model.predict(pairs, apply_softmax=True)
 
     forward_scores = all_scores[0]
     backward_scores = all_scores[1]

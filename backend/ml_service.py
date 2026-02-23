@@ -1,65 +1,70 @@
-from sentence_transformers import SentenceTransformer, CrossEncoder, util
+from sentence_transformers import CrossEncoder
 
-# Lazy-loaded models — only initialized on first use to reduce startup memory
-_similarity_model = None
+# Lazy-loaded model - only initialized on first use to reduce startup memory
 _nli_model = None
 
-NLI_LABELS = ["contradiction", "entailment", "neutral"]
-MEMORIZATION_THRESHOLD = 0.85
-
-
-def _get_similarity_model():
-    global _similarity_model
-    if _similarity_model is None:
-        print("Loading similarity model...")
-        _similarity_model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
-    return _similarity_model
-
+NLI_LABELS = ["contradiction", "comprehension", "neutral"]
 
 def _get_nli_model():
     global _nli_model
     if _nli_model is None:
-        print("Loading NLI model...")
-        _nli_model = CrossEncoder("cross-encoder/nli-deberta-v3-base")
+        print("Loading depth evaluation model...")
+        _nli_model = CrossEncoder("samuel-harvan/trulearn-nli")
     return _nli_model
 
 
-def check_similarity(student_answer: str, pdf_summary: str) -> dict:
-    """Compare student answer against PDF summary to detect memorization.
+def evaluate_depth(student_answer: str, sample_answer: str) -> dict:
+    """Evaluate the depth of understanding in a student's answer.
 
-    Returns a dict with the cosine similarity score and a memorization flag.
-    High similarity (>0.85) suggests the student is copying from the source.
-    """
-    model = _get_similarity_model()
-    answer_embedding = model.encode(student_answer, convert_to_tensor=True)
-    summary_embedding = model.encode(pdf_summary, convert_to_tensor=True)
+    Uses a fine-tuned NLI cross-encoder where the labels represent:
+      - comprehension:   Deep understanding — student explains reasoning, makes
+                      connections, expands beyond a surface definition.
+      - contradiction: Factually wrong — student's answer contradicts or
+                      misrepresents the concept.
+      - neutral:      Shallow/memorized — student recites a definition without
+                      demonstrating genuine comprehension. Correct answer but shallow
 
-    score = util.cos_sim(answer_embedding, summary_embedding).item()
-
-    return {
-        "score": round(score, 4),
-        "is_memorized": score > MEMORIZATION_THRESHOLD,
-    }
-
-
-def check_correctness(student_answer: str, sample_answer: str) -> dict:
-    """Check if the student's answer is correct using NLI.
-
-    Compares (sample_answer, student_answer) — if the student's answer
-    is entailed by the sample answer, it is considered correct.
-
-    Returns a dict with the predicted label and all three NLI scores.
+    Runs inference in both directions for a more robust signal:
+      forward  (student → sample): does the student answer support the expected?
+      backward (sample → student): does the expected answer support the student?
     """
     model = _get_nli_model()
-    scores = model.predict([(sample_answer, student_answer)])[0]
 
-    score_dict = {
-        label: round(float(s), 4)
-        for label, s in zip(NLI_LABELS, scores)
-    }
-    predicted_label = NLI_LABELS[scores.argmax()]
+    pairs = [
+        (student_answer, sample_answer),  # forward: student → sample
+        (sample_answer, student_answer),  # backward: sample → student
+    ]
+    all_scores = model.predict(pairs, apply_softmax=True)
+
+    forward_scores = all_scores[0]
+    backward_scores = all_scores[1]
+
+    forward_label = NLI_LABELS[forward_scores.argmax()]
+    backward_label = NLI_LABELS[backward_scores.argmax()]
+
+    forward_dict = {label: round(float(s), 4) for label, s in zip(NLI_LABELS, forward_scores)}
+    backward_dict = {label: round(float(s), 4) for label, s in zip(NLI_LABELS, backward_scores)}
+
+    # Combined label: contradiction wins if either direction shows it.
+    # Entailment requires both directions to agree.
+    # Otherwise treat as neutral (shallow).
+    if forward_label == "contradiction" or backward_label == "contradiction":
+        combined_label = "contradiction"
+    elif forward_label == "comprehension" and backward_label == "comprehension":
+        combined_label = "comprehension"
+    else:
+        combined_label = "neutral"
+
+    # Depth score: average comprehension probability across both directions
+    depth_score = round(
+        (float(forward_scores[1]) + float(backward_scores[1])) / 2, 4
+    )
 
     return {
-        "label": predicted_label,
-        "scores": score_dict,
+        "label": combined_label,
+        "depth_score": depth_score,
+        "scores": {
+            "forward": forward_dict,
+            "backward": backward_dict,
+        },
     }

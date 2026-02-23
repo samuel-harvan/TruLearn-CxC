@@ -40,13 +40,11 @@ export interface Answer {
 export interface DetectionResult {
   id: number;
   answer_id: number;
-  overfitting_detected: boolean;
-  confidence_score: number;
-  detection_type: 'memorization' | 'surface' | 'behavioral' | 'genuine';
+  detection_type: 'deep' | 'shallow' | 'incorrect';
+  needs_more_practice: boolean;
+  depth_score: number;
   evidence: {
-    similarity_score?: number;
-    semantic_similarity?: number;
-    behavioral_score?: number;
+    depth_score: number;
     response_time?: number;
     reason: string;
   };

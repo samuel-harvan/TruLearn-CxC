@@ -236,31 +236,27 @@ const AssessmentView: React.FC = () => {
     const mcResults = allResults.filter(r => r.question.type === 'multiple_choice');
     const mcCorrect = mcResults.filter(r => r.isCorrect).length;
 
-    // Only analyze open-ended questions for memorization detection
+    // Only analyze open-ended questions for depth detection
     const openEndedResults = allResults.filter(r => r.question.type === 'open_ended' && r.detection);
-    const genuineCount = openEndedResults.filter(r => r.detection!.detection_type === 'genuine').length;
-    const memorizedCount = openEndedResults.filter(r => r.detection!.overfitting_detected).length;
-    const surfaceCount = openEndedResults.filter(r => r.detection!.detection_type === 'surface').length;
+    const deepCount = openEndedResults.filter(r => r.detection!.detection_type === 'deep').length;
+    const shallowCount = openEndedResults.filter(r => r.detection!.detection_type === 'shallow').length;
+    const incorrectCount = openEndedResults.filter(r => r.detection!.detection_type === 'incorrect').length;
 
-    const avgSimilarity = openEndedResults.length > 0
-      ? openEndedResults.reduce((sum, r) => sum + (r.detection!.confidence_score || 0), 0) / openEndedResults.length
+    const mcAccuracyPct = mcResults.length > 0
+      ? Math.round((mcCorrect / mcResults.length) * 100)
       : 0;
 
     // Calculate percentages based on open-ended questions only
-    const understandingPct = openEndedResults.length > 0
-      ? Math.round((genuineCount / openEndedResults.length) * 100)
+    const deepPct = openEndedResults.length > 0
+      ? Math.round((deepCount / openEndedResults.length) * 100)
       : 0;
-    const memorizationPct = openEndedResults.length > 0
-      ? Math.round((memorizedCount / openEndedResults.length) * 100)
-      : 0;
-    const mcAccuracyPct = mcResults.length > 0
-      ? Math.round((mcCorrect / mcResults.length) * 100)
+    const shallowPct = openEndedResults.length > 0
+      ? Math.round((shallowCount / openEndedResults.length) * 100)
       : 0;
 
     let overallMessage: string;
     let overallType: 'success' | 'warning' | 'error';
 
-    // Base assessment on open-ended understanding and MC accuracy
     if (openEndedResults.length === 0) {
       // Only multiple choice answered
       if (mcAccuracyPct >= 80) {
@@ -273,17 +269,17 @@ const AssessmentView: React.FC = () => {
         overallMessage = `Only ${mcAccuracyPct}% correct on multiple choice. Review the material and try again.`;
         overallType = 'error';
       }
-    } else if (memorizationPct > 50) {
-      overallMessage = "You're relying too heavily on memorization. Try explaining concepts in your own words instead of repeating what's in the notes.";
-      overallType = 'error';
-    } else if (genuineCount === openEndedResults.length && mcAccuracyPct >= 80) {
-      overallMessage = "Excellent! You demonstrate genuine understanding of the material. Your answers show real comprehension, not just memorization.";
+    } else if (deepCount === openEndedResults.length && mcAccuracyPct >= 80) {
+      overallMessage = "Excellent! Your answers demonstrate genuine depth of understanding — you're explaining the 'why', not just the 'what'.";
       overallType = 'success';
-    } else if (surfaceCount > genuineCount) {
-      overallMessage = "Your answers show surface-level understanding. Try to go deeper — explain the 'why' behind concepts, not just the 'what'.";
+    } else if (shallowPct > 50) {
+      overallMessage = "Your answers are mostly correct but shallow. Try to go beyond definitions — explain reasoning, make connections, and give examples.";
       overallType = 'warning';
+    } else if (incorrectCount > deepCount) {
+      overallMessage = "Several answers contain factual errors. Review the material carefully and focus on understanding the core concepts.";
+      overallType = 'error';
     } else {
-      overallMessage = "Good effort! Most of your answers show understanding, but review the flagged questions to strengthen weak areas.";
+      overallMessage = "Good effort! Some answers show real depth, but others are surface-level. Push yourself to explain the 'why' behind each concept.";
       overallType = 'warning';
     }
 
@@ -294,12 +290,11 @@ const AssessmentView: React.FC = () => {
       mcCorrect,
       mcAccuracyPct,
       openEndedResults: openEndedResults.length,
-      genuineCount,
-      memorizedCount,
-      surfaceCount,
-      avgSimilarity,
-      understandingPct,
-      memorizationPct,
+      deepCount,
+      shallowCount,
+      incorrectCount,
+      deepPct,
+      shallowPct,
       overallMessage,
       overallType
     };
@@ -333,15 +328,12 @@ const AssessmentView: React.FC = () => {
       conceptData.totalQuestions += 1;
 
       // For multiple choice: count as correct if answer matches
-      // For open-ended: count as correct if genuine OR (surface AND low confidence)
+      // For open-ended: count as correct if deep understanding detected
       let isCorrect = false;
       if (result.question.type === 'multiple_choice') {
         isCorrect = result.isCorrect || false;
       } else if (result.detection) {
-        isCorrect =
-          result.detection.detection_type === 'genuine' ||
-          (result.detection.detection_type === 'surface' &&
-           result.detection.confidence_score < 0.7);
+        isCorrect = result.detection.detection_type === 'deep';
       }
 
       if (isCorrect) conceptData.correctCount += 1;
@@ -768,18 +760,18 @@ const AssessmentView: React.FC = () => {
                             <>
                               <Paper elevation={0} sx={{ p: 2, borderRadius: 2, textAlign: 'center', minWidth: 140, bgcolor: 'white' }}>
                                 <Typography variant="h4" fontWeight={800} color="#51cf66">
-                                  {summary.understandingPct}%
+                                  {summary.deepPct}%
                                 </Typography>
                                 <Typography variant="body2" color="text.secondary" fontWeight={500}>
-                                  Understanding
+                                  Deep Understanding
                                 </Typography>
                               </Paper>
                               <Paper elevation={0} sx={{ p: 2, borderRadius: 2, textAlign: 'center', minWidth: 140, bgcolor: 'white' }}>
-                                <Typography variant="h4" fontWeight={800} color={summary.memorizedCount > 0 ? '#ff6b6b' : '#51cf66'}>
-                                  {summary.memorizationPct}%
+                                <Typography variant="h4" fontWeight={800} color={summary.shallowCount > 0 ? '#ffd43b' : '#51cf66'}>
+                                  {summary.shallowPct}%
                                 </Typography>
                                 <Typography variant="body2" color="text.secondary" fontWeight={500}>
-                                  Memorization
+                                  Shallow
                                 </Typography>
                               </Paper>
                             </>
@@ -801,11 +793,11 @@ const AssessmentView: React.FC = () => {
 
                     {allResults.map((result, index) => {
                       const isMC = result.question.type === 'multiple_choice';
-                      const isCorrect = isMC ? result.isCorrect : result.detection?.detection_type === 'genuine';
+                      const isCorrect = isMC ? result.isCorrect : result.detection?.detection_type === 'deep';
                       const borderColor = isMC
                         ? (result.isCorrect ? '#51cf66' : '#ff6b6b')
-                        : (result.detection?.overfitting_detected ? '#ff6b6b'
-                            : result.detection?.detection_type === 'genuine' ? '#51cf66' : '#ffd43b');
+                        : (result.detection?.detection_type === 'incorrect' ? '#ff6b6b'
+                            : result.detection?.detection_type === 'deep' ? '#51cf66' : '#ffd43b');
 
                       return (
                         <Card
@@ -824,7 +816,7 @@ const AssessmentView: React.FC = () => {
                                 <CheckCircleOutlineIcon sx={{ color: '#51cf66', fontSize: 28, flexShrink: 0 }} />
                               ) : (
                                 <WarningAmberIcon sx={{
-                                  color: isMC ? '#ff6b6b' : (result.detection?.overfitting_detected ? '#ff6b6b' : '#ffd43b'),
+                                  color: isMC ? '#ff6b6b' : (result.detection?.detection_type === 'incorrect' ? '#ff6b6b' : '#ffd43b'),
                                   fontSize: 28,
                                   flexShrink: 0
                                 }} />
@@ -861,15 +853,15 @@ const AssessmentView: React.FC = () => {
                                 ) : (
                                   <>
                                     <Typography variant="caption" fontWeight={600} sx={{
-                                      color: result.detection?.detection_type === 'genuine' ? '#2b8a3e'
-                                        : result.detection?.overfitting_detected ? '#c92a2a' : '#e67700',
+                                      color: result.detection?.detection_type === 'deep' ? '#2b8a3e'
+                                        : result.detection?.detection_type === 'incorrect' ? '#c92a2a' : '#e67700',
                                       textTransform: 'uppercase',
                                       fontSize: '0.7rem'
                                     }}>
                                       {result.detection?.detection_type || 'UNKNOWN'}
                                     </Typography>
                                     <Typography variant="body2" color="text.secondary">
-                                      Similarity: {((result.detection?.confidence_score || 0) * 100).toFixed(0)}%
+                                      Depth: {((result.detection?.depth_score || 0) * 100).toFixed(0)}%
                                     </Typography>
                                   </>
                                 )}

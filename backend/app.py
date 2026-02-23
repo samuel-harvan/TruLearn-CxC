@@ -252,7 +252,7 @@ def run_detection(answer_id):
     """
     Evaluate the depth of understanding in a student's open-ended answer.
     Uses a fine-tuned NLI cross-encoder (nli-deberta-v3-base) where:
-      - entailment   → deep understanding (explains why, makes connections)
+      - comprehension   → deep understanding (explains why, makes connections)
       - neutral      → shallow/memorized (recites a definition, no elaboration)
       - contradiction → factually incorrect
     """
@@ -274,7 +274,7 @@ def run_detection(answer_id):
             # MCQ: simple letter comparison, no depth evaluation needed
             is_correct = answer_text.strip().upper() == correct_answer.strip().upper()
             depth_result = {
-                "label": "entailment" if is_correct else "contradiction",
+                "label": "comprehension" if is_correct else "contradiction",
                 "depth_score": 1.0 if is_correct else 0.0,
                 "scores": {},
             }
@@ -290,10 +290,10 @@ def run_detection(answer_id):
         depth_score = depth_result["depth_score"]
 
         # Map NLI label → detection type
-        # entailment   = deep understanding (student explains reasoning, not just a definition)
+        # comprehension   = deep understanding (student explains reasoning, not just a definition)
         # neutral      = shallow (correct but memorized recitation with no depth)
         # contradiction = factually wrong
-        if nli_label == "entailment":
+        if nli_label == "comprehension":
             detection_type = "deep"
             needs_practice = False
         elif nli_label == "contradiction":

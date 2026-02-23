@@ -1,11 +1,9 @@
 from sentence_transformers import CrossEncoder
 
-# Lazy-loaded model — only initialized on first use to reduce startup memory
+# Lazy-loaded model - only initialized on first use to reduce startup memory
 _nli_model = None
 
-# Labels must match the order the model outputs scores
-NLI_LABELS = ["contradiction", "entailment", "neutral"]
-
+NLI_LABELS = ["contradiction", "comprehension", "neutral"]
 
 def _get_nli_model():
     global _nli_model
@@ -19,12 +17,12 @@ def evaluate_depth(student_answer: str, sample_answer: str) -> dict:
     """Evaluate the depth of understanding in a student's answer.
 
     Uses a fine-tuned NLI cross-encoder where the labels represent:
-      - entailment:   Deep understanding — student explains reasoning, makes
+      - comprehension:   Deep understanding — student explains reasoning, makes
                       connections, expands beyond a surface definition.
       - contradiction: Factually wrong — student's answer contradicts or
                       misrepresents the concept.
       - neutral:      Shallow/memorized — student recites a definition without
-                      demonstrating genuine comprehension.
+                      demonstrating genuine comprehension. Correct answer but shallow
 
     Runs inference in both directions for a more robust signal:
       forward  (student → sample): does the student answer support the expected?
@@ -52,12 +50,12 @@ def evaluate_depth(student_answer: str, sample_answer: str) -> dict:
     # Otherwise treat as neutral (shallow).
     if forward_label == "contradiction" or backward_label == "contradiction":
         combined_label = "contradiction"
-    elif forward_label == "entailment" and backward_label == "entailment":
-        combined_label = "entailment"
+    elif forward_label == "comprehension" and backward_label == "comprehension":
+        combined_label = "comprehension"
     else:
         combined_label = "neutral"
 
-    # Depth score: average entailment probability across both directions
+    # Depth score: average comprehension probability across both directions
     depth_score = round(
         (float(forward_scores[1]) + float(backward_scores[1])) / 2, 4
     )
